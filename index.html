@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirigiendo Escaneo QR...</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding-top: 50px;
+            background-color: #f4f4f4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .loader {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="loader"></div>
+    <h1>Registro de Escaneo en Proceso...</h1>
+    <p>Será redirigido automáticamente en un momento.</p>
+
+    <script>
+        // *** IMPORTANTE: REEMPLAZA ESTA URL CON LA URL DE DESPLIEGUE (DEPLOY) DE TU GOOGLE APPS SCRIPT ***
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx7DQ1L-yIAz4bY3YxPN-yOjp-Jm5NYdmjk7dxFscV4UUIq4HXehbW3XNUFJZqSUmY8ww/exec'; 
+
+        // Usamos una función con exponencial backoff para la API de geolocalización
+        async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+            let attempt = 0;
+            while (attempt < maxRetries) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response;
+                } catch (error) {
+                    attempt++;
+                    if (attempt >= maxRetries) {
+                        throw error;
+                    }
+                    const delay = Math.pow(2, attempt) * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+
+        async function trackAndRedirect() {
+            // 1. Obtener el User Agent (Información del Dispositivo)
+            const userAgent = navigator.userAgent;
+            let ip = 'Error_Captura_IP';
+            let locationParam = 'Error_Captura_Ubicacion';
+
+            // 2. Obtener la IP y la Ubicación Geográfica usando IPinfo (más estable)
+            try {
+                // *** CAMBIO CRITICO AQUI: Se cambia la URL a ipinfo.io ***
+                // Esta API suele ser más estable y menos propensa a rate limits.
+                const response = await fetchWithRetry('https://ipinfo.io/json');
+                const data = await response.json();
+
+                // IPinfo devuelve el estado en la misma estructura si es exitoso
+                if (data.ip) {
+                    // Estos datos provienen del celular que hizo la peticion
+                    ip = data.ip || 'IP_No_Encontrada';
+                    
+                    // IPinfo proporciona ciudad y pais en campos separados
+                    const city = data.city || 'Ciudad_No_Encontrada';
+                    const country = data.country || 'Pais_No_Encontrado';
+                    
+                    // Crear el parametro de Ubicacion: Ciudad, Pais
+                    locationParam = `${city},${country}`;
+                } else {
+                    throw new Error('Fallo en la captura de IP por el servicio externo (ipinfo.io).');
+                }
+            } catch (error) {
+                console.error("Fallo al obtener IP/Ubicacion, usando fallback:", error);
+                // Las variables 'ip' y 'locationParam' mantienen sus valores de error por defecto
+            }
+            
+            // 3. Crear la URL final con todos los parametros
+            // Los nombres de los parametros (ip, loc, ua) coinciden con el Apps Script
+            const finalUrl = `${APPS_SCRIPT_URL}?ip=${encodeURIComponent(ip)}&loc=${encodeURIComponent(locationParam)}&ua=${encodeURIComponent(userAgent)}`;
+
+            // 4. Redirigir al Google Apps Script para registrar los datos
+            window.location.replace(finalUrl);
+        }
+
+        // Se inicia la funcion
+        trackAndRedirect();
+    </script>
+</body>
+</html>
